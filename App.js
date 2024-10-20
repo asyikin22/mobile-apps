@@ -58,7 +58,7 @@ const App = () => {
     return sessions.reduce((total, session) => total + parseFloat(session.duration), 0).toFixed(2)
   }
 
-  //function to delete a sessionl
+  //function to delete a session
   const deleteSession = async (index) => {
     const updatedSessions = sessions.filter((_,i) => i !== index)
     setSessions(updatedSessions)
