@@ -1,6 +1,7 @@
 // imports and initial setup
-import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, Button, FlatList, StyleSheet, TextInput, Alert, Animated } from 'react-native';
+import Icon from 'react-native-vector-icons/FontAwesome'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
@@ -8,8 +9,12 @@ import { TouchableOpacity } from 'react-native';
 //state management
 const App = () => {
   const [isStudying, setIsStudying] = useState(false);
+  const [task, setTask] = useState('');
   const [startTime, setStartTime] = useState(null);
   const [sessions, setSessions] = useState([]);
+
+  //define rotation animated value 
+  const rotation = useRef(new Animated.Value(0)).current 
 
   //loading previously stored sessions
   useEffect(() => {
@@ -29,22 +34,42 @@ const App = () => {
 
   //starting and ending study sessions
   const startSession = () => {
+    console.log("Start session function called")
+    if(!task) {
+      Alert.alert("Task required","Please enter a task!");
+      return;
+    }
+
+    console.log("Starting timer...")
     setIsStudying(true);                                                 // set the user as studying
     setStartTime(new Date());                                            // record the start time
+  
+    //rotate hourglass animation
+    Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 2000, 
+        useNativeDriver: false,
+      })
+    ).start();
+  
   };
 
   const endSession = async () => {
+    console.log("End session function is called")
     const endTime = new Date();                                          // record the end time
     const duration = (endTime - startTime) / 1000 / 60;
     const newSession = {
       start: startTime, 
       end: endTime,
-      duration: duration.toFixed(2)
+      duration: duration.toFixed(2),
+      task: task,
     };
 
     const updatedSessions = [...sessions, newSession];                   // add new sessions to the list
     setSessions(updatedSessions);                                        // update state with new session
     setIsStudying(false);                                                // set user as not studying anymore
+    setTask('')                                                          // reset task input
 
     try {
       await AsyncStorage.setItem('sessions', JSON.stringify(updatedSessions));         // save update session to asyncstorage 
@@ -60,8 +85,9 @@ const App = () => {
 
   //function to delete a session
   const deleteSession = async (index) => {
-    const updatedSessions = sessions.filter((_,i) => i !== index)
-    setSessions(updatedSessions)
+    const updatedSessions = sessions.filter((_,i) => i !== index);
+    setSessions(updatedSessions);
+    await AsyncStorage.setItem('session', JSON.stringify(updatedSessions));  // Update asyncstorage after deletion
   }
 
   // calculate study time per day for heat map
@@ -82,21 +108,55 @@ const App = () => {
 
   const studyByDate = calculateStudyByDate(sessions)                        // calculate the hours studied per date
 
+  //calculate rotation interpolation
+  const rotateInterpolation = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  })
+
   // rendering the calendar and list of sessions
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Study Tracker</Text>
-      {isStudying ? (
-        <Button title="End Study Session" onPress={endSession}/>
-      ) : (
-        <Button title="Start Study Session" onPress={startSession}/>
-      )}
+
+      <TextInput
+        style={styles.input}
+        placeholder='Enter Task'
+        value={task}
+        onChangeText={setTask}
+      />
+
+      {/* start/edn button */}
+      <TouchableOpacity
+        onPress={isStudying ? endSession : startSession}
+        style={{
+          backgroundColor: isStudying ? 'red' : 'green',
+          padding: 10,
+          borderRadius: 5, 
+          margin: 10,
+          alignItems: 'center',
+          flexDirection: 'row',
+          justifyContent: 'center'
+
+        }}
+      > 
+        {isStudying && (
+          <Animated.View style={{ transform: [{ rotate: rotateInterpolation }], marginRight: 8}}>
+            <Icon name='hourglass-half' size={15} color='white'/>
+          </Animated.View>
+        )}
+        <Text style={{ color: 'white', marginLeft: isStudying ? 8 : 0 }}>
+          {isStudying ? 'End Study Session' : 'Start Study Session'}
+        </Text>
+        
+      </TouchableOpacity>
 
       {/* Display total duration of studying*/}
       <Text style={styles.totalDuration}>
         Total Study Duration: {calculateStudyDuration()} minutes
       </Text>
-
+      
+      {/*color code calendar based on intensity levels*/}
       <Calendar 
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
           const intensity = Math.min(1, studyByDate[date] / 4);
@@ -122,10 +182,9 @@ const App = () => {
           <View style={styles.sessionItem}> 
             <Text>Start: {new Date(item.start).toLocaleString()}</Text>
             <Text>Duration: {item.duration} minutes</Text>
+            <Text>Task: {item.task}</Text>
             <TouchableOpacity onPress={() => deleteSession(index)}>
-              <Text style={styles.deleteButton}>
-                Delete
-              </Text>
+              <Text style={styles.deleteButton}>Delete</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -140,6 +199,14 @@ const styles = StyleSheet.create({
     flex: 1, 
     padding: 20,
     backgroundColor: '#001F3F',
+  },
+  input: {
+    height: 40,
+    borderColor: 'gray',
+    borderWidth: 1,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    color: 'white'
   },
   totalDuration: {
     fontSize: 15,
