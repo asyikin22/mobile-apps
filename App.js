@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
+import trackerData from './tracker.json'                  // get json file
 
 //state management
 const App = () => {
@@ -24,6 +25,13 @@ const App = () => {
         if (savedSessions) {
           setSessions(JSON.parse(savedSessions))                         //if sessions exist, load them into state
         }
+
+        //load tracker.json file 
+        const importedData = trackerData || [];
+        const allSessions = [...importedData, ...JSON.parse(savedSessions || '[]')]
+
+        setSessions(allSessions)
+
       } catch (error) {
         console.log('Error Loading Sessions:', error)
       }
@@ -90,19 +98,36 @@ const App = () => {
     await AsyncStorage.setItem('session', JSON.stringify(updatedSessions));  // Update asyncstorage after deletion
   }
 
+  //handle date formatting
+  const formatDate = (dateStr) => {
+
+    if(!dateStr) {
+      return '';
+    }
+
+    //check if the date s in yyyy/mm/dd format
+    const dateParts = dateStr.split('/');
+
+    if(dateParts.length === 3) {
+      const [year, month, day] = dateParts
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2,'0')}`;
+    }
+    return '';
+  }
+
   // calculate study time per day for heat map
   const calculateStudyByDate = (sessions) => {
     const dateMap = {};
 
     sessions.forEach((session) => {
-      const date = new Date(session.start).toISOString().split('T')[0];     // extract the date (YYYY-MM-DD)
+      const date = formatDate(session.Date || new Date(session.start).toISOString().split('T')[0]);     // extract the date (YYYY-MM-DD)
+
       if (dateMap[date]) {
-        dateMap[date] += parseFloat(session.duration);                      // Add duration if data exists
+        dateMap[date] += parseFloat(session.duration || 0);                      // Add duration if data exists
       } else {
-        dateMap[date] = parseFloat(session.duration);                       // Initialize the date
+        dateMap[date] = parseFloat(session.duration || 0);                       // Initialize the date
       }
     });
-
     return dateMap;
   };
 
@@ -159,11 +184,21 @@ const App = () => {
       {/*color code calendar based on intensity levels*/}
       <Calendar 
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
-          const intensity = Math.min(1, studyByDate[date] / 4);
+          const hoursStudied = studyByDate[date];
+          let backgroundColor;
+
+          if (hoursStudied >=3) {
+            backgroundColor = 'rgba(0, 100, 0, 1)';
+          } else if (hoursStudied >=1) {
+            backgroundColor = 'rgba(0, 255, 0, 0.7)'
+          } else {
+            backgroundColor = 'rgba(0, 255, 0, 0.3)'
+          }
+
           acc[date] = {
             customStyles: {
               container: {
-                backgroundColor: `rgba(0, 100, 0, ${intensity})`,
+                backgroundColor: backgroundColor,
               },
               text: {
                 color: 'white',
