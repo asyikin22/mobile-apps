@@ -122,7 +122,7 @@
   {
     "Date": "2024/01/23",
     "Task": "- Website can't be deployed on cloudflare",
-    "Start": "Invalid Date",
+    "Start": "10:00 AM",
     "End": "12:30 PM"
   },
   {
@@ -159,7 +159,7 @@
     "Date": "2024/01/23",
     "Task": "Commit change from vs code to github (file name) = i give up lol",
     "Start": "11:50 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/01/24",
@@ -471,7 +471,7 @@
     "Date": "2024/02/03",
     "Task": "Tutorial Atif on Flexbox",
     "Start": "11:40 PM",
-    "End": "No End Time"
+    "End":"12:00 AM"
   },
   {
     "Date": "2024/02/04",
@@ -567,7 +567,7 @@
     "Date": "2024/02/07",
     "Task": "KP - Bootstrap & Grid",
     "Start": "09:00 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/02/08",
@@ -1143,7 +1143,7 @@
     "Date": "2024/03/01",
     "Task": "JS30 Image gallery",
     "Start": "11:10 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/03/01",
@@ -1347,7 +1347,7 @@
     "Date": "2024/03/09",
     "Task": "Summarise codes + update readme file",
     "Start": "10:35 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/03/09",
@@ -2385,7 +2385,7 @@
     "Date": "2024/05/01",
     "Task": "100+ web dev concepts - Fireship",
     "Start": "10:15 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/05/02",
@@ -2739,7 +2739,7 @@
     "Date": "2024/05/24",
     "Task": "Connect REACT to BACKEND",
     "Start": "10:50 PM",
-    "End": "No End Time"
+    "End": "12:00 AM"
   },
   {
     "Date": "2024/05/25",

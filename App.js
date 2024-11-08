@@ -5,14 +5,17 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
+import moment from 'moment';
 import trackerData from './tracker.json'                  // get json file
 
 //state management
 const App = () => {
+  const [sessions, setSessions] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
   const [isStudying, setIsStudying] = useState(false);
   const [task, setTask] = useState('');
   const [startTime, setStartTime] = useState(null);
-  const [sessions, setSessions] = useState([]);
+  
 
   //define rotation animated value 
   const rotation = useRef(new Animated.Value(0)).current 
@@ -22,21 +25,55 @@ const App = () => {
     const loadSessions = async () => {
       try {
         const savedSessions = await AsyncStorage.getItem('sessions');    //retrieve data fro asyncstorage
-        if (savedSessions) {
-          setSessions(JSON.parse(savedSessions))                         //if sessions exist, load them into state
-        }
-
-        //load tracker.json file 
         const importedData = trackerData || [];
-        const allSessions = [...importedData, ...JSON.parse(savedSessions || '[]')]
 
-        setSessions(allSessions)
+        //Parse tracker.json data
+        const parsedImportedData = importedData.map((session) => {
 
+          //format the date and time stirng into parseable format for JS date object
+          const dateParts = session.Date.split('/');
+          const formattedDate = `${dateParts[0]}-${dateParts[1].padStart(2, '0')}-${dateParts[2].padStart(2, '0')}`
+
+          //combine formatted date with start & end time strings
+          const startStr = `${formattedDate} ${session.Start}`;
+          const endStr = `${formattedDate} ${session.End}`;
+
+          const startDate = new Date(startStr)
+          const endDate = new Date(endStr)
+
+          //if the end date is earlier than the start date, it means the session spans across days
+          if (endDate < startDate) {
+            endDate.setDate(endDate.getDate() + 1)
+          }
+          
+          //check if start date and end date are valid 
+          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            console.warn(`Invalid date for session: ${JSON.stringify(session)}`);
+            return null;
+          }
+
+          const duration = (endDate - startDate) / 1000 / 60;
+
+          return {
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+            duration: duration.toFixed(2),
+            task: session.Task,
+            Date: startDate.toISOString().split('T')[0],
+          }
+        }).filter(Boolean);
+
+        //parse saved sessions only if it's not null
+        const parsedSavedSessions = savedSessions ? JSON.parse(savedSessions) : [];
+
+        // combine imported and saved sessions
+        const allSessions = [...parsedImportedData, ...parsedSavedSessions];
+
+        setSessions(allSessions);
       } catch (error) {
         console.log('Error Loading Sessions:', error)
       }
     };
-
     loadSessions();
   }, [])
 
@@ -72,6 +109,7 @@ const App = () => {
       end: endTime,
       duration: duration.toFixed(2),
       task: task,
+      Date: new Date().toISOString().split('T')[0],
     };
 
     const updatedSessions = [...sessions, newSession];                   // add new sessions to the list
@@ -86,52 +124,40 @@ const App = () => {
     }
   };
 
-  //function to calculate study duration
-  const calculateStudyDuration = () => {
-    return sessions.reduce((total, session) => total + parseFloat(session.duration), 0).toFixed(2)
+   //Handle calendar date selection
+   const onDayPress = (day) => {
+    setSelectedDate(day.dateString)
   }
 
-  //function to delete a session
-  const deleteSession = async (index) => {
+  //calcualte study duration
+  const calculateStudyDurationForDay = (date) => {
+      const filteredSessions = sessions.filter((session) => session.Date === date)
+      const totalDuration = filteredSessions.reduce((total, session) => total + parseFloat(session.duration), 0)
+      return totalDuration.toFixed(2);
+  };
+
+   //function to delete a session
+   const deleteSession = async (index) => {
     const updatedSessions = sessions.filter((_,i) => i !== index);
     setSessions(updatedSessions);
-    await AsyncStorage.setItem('session', JSON.stringify(updatedSessions));  // Update asyncstorage after deletion
-  }
 
-  //handle date formatting
-  const formatDate = (dateStr) => {
+    try { 
+      await AsyncStorage.setItem('sessions', JSON.stringify(updatedSessions));                // Update asyncstorage after deletion
+    } catch (error) {
+      console.log('Error Saving Sessions:', error)
+    }  
+  };
 
-    if(!dateStr) {
-      return '';
-    }
-
-    //check if the date s in yyyy/mm/dd format
-    const dateParts = dateStr.split('/');
-
-    if(dateParts.length === 3) {
-      const [year, month, day] = dateParts
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2,'0')}`;
-    }
-    return '';
-  }
-
-  // calculate study time per day for heat map
+  //function to calculate study duration & group by date
   const calculateStudyByDate = (sessions) => {
     const dateMap = {};
-
     sessions.forEach((session) => {
-      const date = formatDate(session.Date || new Date(session.start).toISOString().split('T')[0]);     // extract the date (YYYY-MM-DD)
-
-      if (dateMap[date]) {
-        dateMap[date] += parseFloat(session.duration || 0);                      // Add duration if data exists
-      } else {
-        dateMap[date] = parseFloat(session.duration || 0);                       // Initialize the date
-      }
+      const date = session.Date || new Date(session.start).toISOString().split('T')[0];        //ensure date  is in yy-mm-dd format
+      dateMap[date] = dateMap[date] + parseFloat(session.duration || 0);
     });
     return dateMap;
   };
-
-  const studyByDate = calculateStudyByDate(sessions)                        // calculate the hours studied per date
+  const studyByDate = calculateStudyByDate(sessions)
 
   //calculate rotation interpolation
   const rotateInterpolation = rotation.interpolate({
@@ -149,9 +175,10 @@ const App = () => {
         placeholder='Enter Task'
         value={task}
         onChangeText={setTask}
+        placeholderTextColor= "#ccc"
       />
 
-      {/* start/edn button */}
+      {/* start/end button */}
       <TouchableOpacity
         onPress={isStudying ? endSession : startSession}
         style={{
@@ -176,34 +203,37 @@ const App = () => {
         
       </TouchableOpacity>
 
-      {/* Display total duration of studying*/}
+      {/* Display total duration for selected day*/}
       <Text style={styles.totalDuration}>
-        Total Study Duration: {calculateStudyDuration()} minutes
+        Total Study Duration for {selectedDate}: {calculateStudyDurationForDay(selectedDate)} minutes
       </Text>
       
       {/*color code calendar based on intensity levels*/}
       <Calendar 
+        onDayPress={onDayPress}
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
-          const hoursStudied = studyByDate[date];
+          const formattedDate = moment(date).format('YYYY-MM-DD');
+          const hoursStudied = studyByDate[date] / 60;
           let backgroundColor;
 
-          if (hoursStudied >=3) {
-            backgroundColor = 'rgba(0, 100, 0, 1)';
-          } else if (hoursStudied >=1) {
-            backgroundColor = 'rgba(0, 255, 0, 0.7)'
+          if (hoursStudied >=5) {
+            backgroundColor = 'green';
+          } else if (hoursStudied >=3) {
+            backgroundColor = 'blue'
+          } else if (hoursStudied > 0) {
+            backgroundColor = 'yellow'
           } else {
-            backgroundColor = 'rgba(0, 255, 0, 0.3)'
+            backgroundColor = 'transparent';              //no study
           }
 
-          acc[date] = {
+          acc[formattedDate] = {
             customStyles: {
-              container: {
-                backgroundColor: backgroundColor,
-              },
-              text: {
-                color: 'white',
-              },
+              container: { backgroundColor },
             },
+            text: {
+              color: hoursStudied > 0 ? 'white' : 'black',
+              fontWeight: 'bold',
+            }
           };
           return acc;
         }, {})}
@@ -211,18 +241,26 @@ const App = () => {
       />
 
       <FlatList 
-        data={sessions}
-        keyExtractor={(item, index) => index.toString()}
-        renderItem={({item}) => (
-          <View style={styles.sessionItem}> 
-            <Text>Start: {new Date(item.start).toLocaleString()}</Text>
+        data={sessions.filter((session) => !selectedDate || session.Date === selectedDate)}
+        keyExtractor={(_, index) => index.toString()}
+        renderItem={({item, index}) => {
+          const startDate = new Date(item.start);
+          const formattedStartTime = startDate.toLocaleString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+          return (
+            <View style={styles.sessionItem}> 
+            <Text>Task: {item.task || "No Task Available"}</Text>
             <Text>Duration: {item.duration} minutes</Text>
-            <Text>Task: {item.task}</Text>
+            <Text>{item.Date}</Text>
+            <Text>Start Time: {formattedStartTime}</Text>
             <TouchableOpacity onPress={() => deleteSession(index)}>
               <Text style={styles.deleteButton}>Delete</Text>
             </TouchableOpacity>
           </View>
-        )}
+          );
+        }}
       />
     </View>
   );
