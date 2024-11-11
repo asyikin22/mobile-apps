@@ -5,13 +5,13 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
-import moment from 'moment';
+import moment, { duration } from 'moment';
 import trackerData from './tracker.json'                  // get json file
 
 //state management
 const App = () => {
   const [sessions, setSessions] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(moment().format("YYYY-MM-DD"));
   const [isStudying, setIsStudying] = useState(false);
   const [task, setTask] = useState('');
   const [startTime, setStartTime] = useState(null);
@@ -29,39 +29,18 @@ const App = () => {
 
         //Parse tracker.json data
         const parsedImportedData = importedData.map((session) => {
-
-          //format the date and time stirng into parseable format for JS date object
-          const dateParts = session.Date.split('/');
-          const formattedDate = `${dateParts[0]}-${dateParts[1].padStart(2, '0')}-${dateParts[2].padStart(2, '0')}`
-
-          //combine formatted date with start & end time strings
-          const startStr = `${formattedDate} ${session.Start}`;
-          const endStr = `${formattedDate} ${session.End}`;
-
-          const startDate = new Date(startStr)
-          const endDate = new Date(endStr)
-
-          //if the end date is earlier than the start date, it means the session spans across days
-          if (endDate < startDate) {
-            endDate.setDate(endDate.getDate() + 1)
-          }
-          
-          //check if start date and end date are valid 
-          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-            console.warn(`Invalid date for session: ${JSON.stringify(session)}`);
-            return null;
-          }
-
-          const duration = (endDate - startDate) / 1000 / 60;
+          const startStr = moment(`${session.Date} ${session.Start}`, 'YYYY-MM-DD hh:mm A');
+          const endStr = moment(`${session.Date} ${session.End}`, 'YYYY-MM-DD hh:mm A');
+          const duration = parseFloat(session.Duration_minutes) || 0;
 
           return {
-            start: startDate.toISOString(),
-            end: endDate.toISOString(),
-            duration: duration.toFixed(2),
+            start: startStr.toISOString(),
+            end: endStr.toISOString(),
+            duration: duration,
             task: session.Task,
-            Date: startDate.toISOString().split('T')[0],
+            Date: session.Date,
           }
-        }).filter(Boolean);
+        });
 
         //parse saved sessions only if it's not null
         const parsedSavedSessions = savedSessions ? JSON.parse(savedSessions) : [];
@@ -102,14 +81,15 @@ const App = () => {
 
   const endSession = async () => {
     console.log("End session function is called")
-    const endTime = new Date();                                          // record the end time
-    const duration = (endTime - startTime) / 1000 / 60;
+    const endTime = moment();                                          // record the end time
+    const duration = endTime.diff(startTime, 'minutes');
+
     const newSession = {
-      start: startTime, 
-      end: endTime,
+      start: startTime.toISOString(), 
+      end: endTime.toISOString(),
       duration: duration.toFixed(2),
       task: task,
-      Date: new Date().toISOString().split('T')[0],
+      Date: moment().format('YYYY-MM-DD')
     };
 
     const updatedSessions = [...sessions, newSession];                   // add new sessions to the list
@@ -129,10 +109,10 @@ const App = () => {
     setSelectedDate(day.dateString)
   }
 
-  //calcualte study duration
+  //calcualte study duration for the selected day
   const calculateStudyDurationForDay = (date) => {
       const filteredSessions = sessions.filter((session) => session.Date === date)
-      const totalDuration = filteredSessions.reduce((total, session) => total + parseFloat(session.duration), 0)
+      const totalDuration = filteredSessions.reduce((total, session) => total + session.duration, 0)
       return totalDuration.toFixed(2);
   };
 
@@ -152,18 +132,49 @@ const App = () => {
   const calculateStudyByDate = (sessions) => {
     const dateMap = {};
     sessions.forEach((session) => {
-      const date = session.Date || new Date(session.start).toISOString().split('T')[0];        //ensure date  is in yy-mm-dd format
-      dateMap[date] = dateMap[date] + parseFloat(session.duration || 0);
+      const date = session.Date || moment(session.start).format('YYYY-MM-DD')   
+      const duration = session.duration || 0;
+
+      dateMap[date] = (dateMap[date] || 0) + duration;
+    
     });
     return dateMap;
   };
   const studyByDate = calculateStudyByDate(sessions)
+
+  //function to format the time to show AM/PM
+  const formatStartTime = (start) => {
+    const startDate = moment(start);
+    return startDate.format('hh:mm A');
+  }
 
   //calculate rotation interpolation
   const rotateInterpolation = rotation.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg']
   })
+
+  //legend function
+  const Legend = () => {
+    return (
+      <View style={styles.legendContainer}>
+        <View style={styles.legendItem}>
+          <View style={[styles.colorBox, {backgroundColor: 'green'}]}></View>
+          <Text style={styles.legendText}>5+ hours</Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.colorBox, {backgroundColor: '#89CFF0'}]}></View>
+          <Text style={styles.legendText}>3-5 hours</Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.colorBox, {backgroundColor: 'lightcoral'}]}></View>
+          <Text style={styles.legendText}>&lt; 3 hours</Text>
+        </View>
+      </View>
+    )
+  }
 
   // rendering the calendar and list of sessions
   return (
@@ -205,28 +216,38 @@ const App = () => {
 
       {/* Display total duration for selected day*/}
       <Text style={styles.totalDuration}>
-        Total Study Duration for {selectedDate}: {calculateStudyDurationForDay(selectedDate)} minutes
+        Total:{" "} 
+        <Text style={styles.highlightedValue}>
+        {calculateStudyDurationForDay(selectedDate)} 
+        </Text>{" "} 
+        min on{" "}  
+        <Text style={styles.highlightedValue}>
+        {selectedDate}
+        </Text>
       </Text>
+
+      {/*Add legend*/}
+      <Legend />
       
       {/*color code calendar based on intensity levels*/}
       <Calendar 
         onDayPress={onDayPress}
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
-          const formattedDate = moment(date).format('YYYY-MM-DD');
-          const hoursStudied = studyByDate[date] / 60;
-          let backgroundColor;
+          const minutesStudied = studyByDate[date];
+          const hoursStudied = minutesStudied / 60;
 
+          let backgroundColor;
           if (hoursStudied >=5) {
             backgroundColor = 'green';
-          } else if (hoursStudied >=3) {
-            backgroundColor = 'blue'
+          } else if (hoursStudied >3) {
+            backgroundColor = '#89CFF0'
           } else if (hoursStudied > 0) {
-            backgroundColor = 'yellow'
+            backgroundColor = 'lightcoral'
           } else {
             backgroundColor = 'transparent';              //no study
           }
 
-          acc[formattedDate] = {
+          acc[date] = {
             customStyles: {
               container: { backgroundColor },
             },
@@ -244,19 +265,17 @@ const App = () => {
         data={sessions.filter((session) => !selectedDate || session.Date === selectedDate)}
         keyExtractor={(_, index) => index.toString()}
         renderItem={({item, index}) => {
-          const startDate = new Date(item.start);
-          const formattedStartTime = startDate.toLocaleString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
+          const formattedStartTime = formatStartTime(item.start);
+          const formattedEndTime = formatStartTime(item.end)
           return (
             <View style={styles.sessionItem}> 
             <Text>Task: {item.task || "No Task Available"}</Text>
             <Text>Duration: {item.duration} minutes</Text>
-            <Text>{item.Date}</Text>
+            <Text>Date: {item.Date}</Text>
             <Text>Start Time: {formattedStartTime}</Text>
+            <Text>End Time: {formattedEndTime}</Text>
             <TouchableOpacity onPress={() => deleteSession(index)}>
-              <Text style={styles.deleteButton}>Delete</Text>
+              <Icon name="trash" size={20} color="red" />
             </TouchableOpacity>
           </View>
           );
@@ -287,6 +306,10 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     color: 'yellow',
   },
+  highlightedValue: {
+    color: 'fuchsia', 
+    fontWeight: 'bold',
+  },
   header: {
     fontSize: 24, 
     fontWeight: 'bold',
@@ -303,6 +326,29 @@ const styles = StyleSheet.create({
   deleteButton: {
     color: 'red',
     marginTop: 5,
+  },
+  legendContainer: {
+    marginVertical: 15,
+    direction: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 5,
+    backgroundColor: '#2C3E50',
+    borderRadius: 8,
+  }, 
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  colorBox: {
+    width: 20,
+    height: 20,
+    marginRight: 10,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 14,
+    color: 'white',
   }
 });
 

@@ -23,6 +23,7 @@ const formattedData = jsonData.slice(1).map((row) => {
     const task = row[2] || '';                                                                  //task column
     const startTimeValue = row[3];
     const endTimeValue = row[4];
+    const durationInMinutesInExcel = row[6];
 
     const date = excelDate                                                                      // Convert Excel date ---> JS epoch time
         ? dayjs(new Date((excelDate - 25569) * 86400 * 1000)).format('YYYY/MM/DD')
@@ -32,21 +33,22 @@ const formattedData = jsonData.slice(1).map((row) => {
         if (typeof timeValue === 'number') {
             const hours = Math.floor(timeValue * 24);
             const minutes = Math.round((timeValue * 24 * 60) % 60);
-            return dayjs().hour(hours).minute(minutes).format('hh:mm A');
+            return dayjs().hour(hours).minute(minutes);
         } else if (typeof timeValue === 'string') {
-            return dayjs(timeValue, 'hh:mm A').format('hh:mm A');
+            return dayjs(timeValue, 'hh:mm A');
         }
-        return "No Time"
+        return dayjs();
     }
 
-    const startTime = startTimeValue ? formatTime(startTimeValue) : "No Start Time";             // Convert Start time
-    const endTime = endTimeValue ? formatTime(endTimeValue) : "No End Time";                     // Convert End time (12 hour + AM/PM)
-
+    const startTime = startTimeValue ? formatTime(startTimeValue) : dayjs();          // Convert Start time
+    const endTime = endTimeValue ? formatTime(endTimeValue) : dayjs();                   // Convert End time (12 hour + AM/PM)
+    
     return {
         Date: date,
         Task: task || "No Task",
-        Start: startTime,
-        End: endTime
+        Start: startTime.format('hh:mm A'),
+        End: endTime.format('hh:mm A'),
+        Duration: durationInMinutesInExcel.toString()
     };
 });
 
