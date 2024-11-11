@@ -16,7 +16,6 @@ const App = () => {
   const [task, setTask] = useState('');
   const [startTime, setStartTime] = useState(null);
   
-
   //define rotation animated value 
   const rotation = useRef(new Animated.Value(0)).current 
 
@@ -28,26 +27,19 @@ const App = () => {
         const importedData = trackerData || [];
 
         //Parse tracker.json data
-        const parsedImportedData = importedData.map((session) => {
-          const startStr = moment(`${session.Date} ${session.Start}`, 'YYYY-MM-DD hh:mm A');
-          const endStr = moment(`${session.Date} ${session.End}`, 'YYYY-MM-DD hh:mm A');
-          const duration = parseFloat(session.Duration_minutes) || 0;
-
-          return {
-            start: startStr.toISOString(),
-            end: endStr.toISOString(),
-            duration: duration,
-            task: session.Task,
-            Date: session.Date,
-          }
-        });
+        const parsedImportedData = importedData.map(session => ({
+          start: moment(`${session.Date} ${session.Start}`, 'YYYY-MM-DD hh:mm A').toISOString(),
+          end: moment(`${session.Date} ${session.End}`, 'YYYY-MM-DD hh:mm A').toISOString(),
+          duration: parseFloat(session.Duration_minutes) || 0,
+          task: session.Task,
+          Date: session.Date,
+        }));
 
         //parse saved sessions only if it's not null
         const parsedSavedSessions = savedSessions ? JSON.parse(savedSessions) : [];
 
         // combine imported and saved sessions
         const allSessions = [...parsedImportedData, ...parsedSavedSessions];
-
         setSessions(allSessions);
       } catch (error) {
         console.log('Error Loading Sessions:', error)
@@ -76,7 +68,6 @@ const App = () => {
         useNativeDriver: false,
       })
     ).start();
-  
   };
 
   const endSession = async () => {
@@ -87,7 +78,7 @@ const App = () => {
     const newSession = {
       start: startTime.toISOString(), 
       end: endTime.toISOString(),
-      duration: duration.toFixed(2),
+      duration: duration,
       task: task,
       Date: moment().format('YYYY-MM-DD')
     };
@@ -112,8 +103,8 @@ const App = () => {
   //calcualte study duration for the selected day
   const calculateStudyDurationForDay = (date) => {
       const filteredSessions = sessions.filter((session) => session.Date === date)
-      const totalDuration = filteredSessions.reduce((total, session) => total + session.duration, 0)
-      return totalDuration.toFixed(2);
+      const totalDuration = filteredSessions.reduce((total, session) => total + (session.duration || 0), 0)
+      return Number(totalDuration).toFixed(2);
   };
 
    //function to delete a session
@@ -132,11 +123,8 @@ const App = () => {
   const calculateStudyByDate = (sessions) => {
     const dateMap = {};
     sessions.forEach((session) => {
-      const date = session.Date || moment(session.start).format('YYYY-MM-DD')   
-      const duration = session.duration || 0;
-
-      dateMap[date] = (dateMap[date] || 0) + duration;
-    
+      const date = session.Date; 
+      dateMap[date] = (dateMap[date] || 0) + session.duration;
     });
     return dateMap;
   };
