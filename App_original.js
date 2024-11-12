@@ -2,16 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Button, FlatList, StyleSheet, TextInput, Alert, Animated } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
-import moment from 'moment';
-import { createClient } from '@supabase/supabase-js';
-import { REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY } from '@env';
-
-console.log("URL:", REACT_APP_SUPABASE_URL);
-console.log("KEY:", REACT_APP_SUPABASE_KEY);
-
-const supabase = createClient(REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY)
+import moment, { duration } from 'moment';
+import trackerData from './tracker.json'                  // get json file
 
 //state management
 const App = () => {
@@ -24,87 +19,44 @@ const App = () => {
   //define rotation animated value 
   const rotation = useRef(new Animated.Value(0)).current 
 
-  //fetch sessions from supabase
-  const fetchSessionsFromSupabase = async () => {
-    const { data, error } = await supabase
-      .from('sessions')
-      .select('*')
-      .order('start', { ascending: true })
-    if (error) {
-      console.error('Error fetching sessions:', error);
-      return [];
-    }
-
-    return data.map(session => ({
-      id: session.id,
-      start: moment(session.start).toISOString(),
-      end: moment(session.end).toISOString(),
-      duration: session.duration,
-      task: session.task,
-      Date: session.Date,
-    }));
-  };
-
-  ///////////////////////////////////////////////////////////////////////////////////////////
-
-  //load session into state
-  const loadSessions = async () => {
-    try {
-      const sessionsData = await fetchSessionsFromSupabase();
-      setSessions(sessionsData);
-      console.log('Sessions loaded from supabase:', sessionsData.length);
-    } catch (error) {
-      console.log('Error loading sessions:'. error)
-    }
-  };
-
-  //Effect to load sessions initially
+  //loading previously stored sessions
   useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        const savedSessions = await AsyncStorage.getItem('sessions');    //retrieve data fro asyncstorage
+        const importedData = trackerData || [];
+
+        //Parse tracker.json data
+        const parsedImportedData = importedData.map(session => ({
+          start: moment(`${session.Date} ${session.Start}`, 'YYYY-MM-DD hh:mm A').toISOString(),
+          end: moment(`${session.Date} ${session.End}`, 'YYYY-MM-DD hh:mm A').toISOString(),
+          duration: parseFloat(session.Duration_minutes) || 0,
+          task: session.Task,
+          Date: session.Date,
+        }));
+
+        //parse saved sessions only if it's not null
+        const parsedSavedSessions = savedSessions ? JSON.parse(savedSessions) : [];
+
+        // combine imported and saved sessions
+        const allSessions = [...parsedImportedData, ...parsedSavedSessions];
+        setSessions(allSessions);
+      } catch (error) {
+        console.log('Error Loading Sessions:', error)
+      }
+    };
     loadSessions();
   }, [])
 
-  //function to reset app 
-  const resetAppData = async () => {
-    try {
-      const { error } = await supabase.from('sessios').delete();
-      if (error) {
-        console.error('Error clearing supabase data:', error);
-        return;
-      }
-
-      //reset state
-      setSessions([]);
-      setTask('');
-      setIsStudying(false);
-      setStartTime(null);
-
-      console.log('supabase data reset complete...')
-    } catch (error) {
-      console.log("Error resetting app data:", error)
-    }
-  }
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  //confirm reset
-  const confirmReset = () => {
-    Alert.alert(
-      "Confirm Reset",
-      "Are you sure you want to reset the App? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel"},
-        { text: "Yes, Reset", onPress: resetAppData}
-      ]
-    );
-  };
-
   //starting and ending study sessions
   const startSession = () => {
+    console.log("Start session function called")
     if(!task) {
       Alert.alert("Task required","Please enter a task!");
       return;
     }
 
+    console.log("Starting timer...")
     setIsStudying(true);                                                 // set the user as studying
     setStartTime(new Date());                                            // record the start time
   
@@ -119,6 +71,7 @@ const App = () => {
   };
 
   const endSession = async () => {
+    console.log("End session function is called")
     const endTime = moment();                                          // record the end time
     const duration = endTime.diff(startTime, 'minutes');
 
@@ -133,14 +86,12 @@ const App = () => {
     const updatedSessions = [...sessions, newSession];                   // add new sessions to the list
     setSessions(updatedSessions);                                        // update state with new session
     setIsStudying(false);                                                // set user as not studying anymore
-    setTask('');                                                          // reset task input
+    setTask('')                                                          // reset task input
 
     try {
-      const { error } = await supabase.from('sessions').insert([newSession]);
-      if (error) console.log('Error inserting sessions:', error);
-      else console.log('Session saved to supabase');
+      await AsyncStorage.setItem('sessions', JSON.stringify(updatedSessions));         // save update session to asyncstorage 
     } catch (error) {
-      console.log('Error saving session:', error);
+      console.log('Error Saving Sessions:', error);
     }
   };
 
@@ -161,13 +112,11 @@ const App = () => {
     const updatedSessions = sessions.filter((_,i) => i !== index);
     setSessions(updatedSessions);
 
-    try {
-      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
-      if (error) console.log('Error deleting session:', error);
-      else console.log('Session deleted from supabase');
+    try { 
+      await AsyncStorage.setItem('sessions', JSON.stringify(updatedSessions));                // Update asyncstorage after deletion
     } catch (error) {
-      console.log('Error deleting session:', error);
-    }
+      console.log('Error Saving Sessions:', error)
+    }  
   };
 
   //function to calculate study duration & group by date
@@ -220,11 +169,6 @@ const App = () => {
     <View style={styles.container}>
       <Text style={styles.header}>Study Tracker</Text>
 
-      {/*Reset Button*/}
-      <TouchableOpacity style={styles.resetBtn} onPress={confirmReset}>
-        <Text style={styles.resetBtnTxt}>Reset</Text>
-      </TouchableOpacity>
-
       <TextInput
         style={styles.input}
         placeholder='Enter Task'
@@ -273,7 +217,7 @@ const App = () => {
       {/*Add legend*/}
       <Legend />
       
-      {/*color code calendar based on intensity levels*/}
+      {/* color code calendar based on intensity levels
       <Calendar 
         onDayPress={onDayPress}
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
@@ -303,7 +247,7 @@ const App = () => {
           return acc;
         }, {})}
         markingType={'custom'}
-      />
+      /> */}
 
       <FlatList 
         data={sessions.filter((session) => !selectedDate || session.Date === selectedDate)}
@@ -392,17 +336,6 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 14,
-    color: 'white',
-  },
-  resetBtn: {
-    backgroundColor: 'red',
-    width: 50,
-    padding: 3,
-    marginBottom: 10,
-    borderRadius: 15,
-  },
-  resetBtnTxt: {
-    textAlign: 'center',
     color: 'white',
   }
 });
