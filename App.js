@@ -6,12 +6,12 @@ import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
 import moment from 'moment';
 import { createClient } from '@supabase/supabase-js';
-import { REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY } from '@env';
+import { SUPABASE_URL, SUPABASE_KEY } from '@env';
 
-console.log("URL:", REACT_APP_SUPABASE_URL);
-console.log("KEY:", REACT_APP_SUPABASE_KEY);
+console.log("URL:", SUPABASE_URL);
+console.log("KEY:", SUPABASE_KEY);
 
-const supabase = createClient(REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_KEY)
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 //state management
 const App = () => {
@@ -27,25 +27,24 @@ const App = () => {
   //fetch sessions from supabase
   const fetchSessionsFromSupabase = async () => {
     const { data, error } = await supabase
-      .from('sessions')
+      .from('tracker')
       .select('*')
-      .order('start', { ascending: true })
+      .order('Start', { ascending: true })
     if (error) {
-      console.error('Error fetching sessions:', error);
+      console.error('Error fetching sessions:', error.message);
       return [];
     }
 
     return data.map(session => ({
       id: session.id,
-      start: moment(session.start).toISOString(),
-      end: moment(session.end).toISOString(),
-      duration: session.duration,
-      task: session.task,
+      start: session.Start,
+      end: session.End,
+      duration: session.Duration_minutes,
+      task: session.Task,
       Date: session.Date,
+      createdFromApp: false,                  //data fetched from supabase (initial import) - protected
     }));
   };
-
-  ///////////////////////////////////////////////////////////////////////////////////////////
 
   //load session into state
   const loadSessions = async () => {
@@ -62,6 +61,8 @@ const App = () => {
   useEffect(() => {
     loadSessions();
   }, [])
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
 
   //function to reset app 
   const resetAppData = async () => {
@@ -84,8 +85,6 @@ const App = () => {
     }
   }
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////
-
   //confirm reset
   const confirmReset = () => {
     Alert.alert(
@@ -98,6 +97,8 @@ const App = () => {
     );
   };
 
+  //////////////////////////////////////////////////////////////////////////////////////////////////////
+
   //starting and ending study sessions
   const startSession = () => {
     if(!task) {
@@ -105,8 +106,8 @@ const App = () => {
       return;
     }
 
-    setIsStudying(true);                                                 // set the user as studying
-    setStartTime(new Date());                                            // record the start time
+    setIsStudying(true);                                               // set the user as studying
+    setStartTime(moment());                                            // record the start time wiht moment to handle time zone properly
   
     //rotate hourglass animation
     Animated.loop(
@@ -123,24 +124,29 @@ const App = () => {
     const duration = endTime.diff(startTime, 'minutes');
 
     const newSession = {
-      start: startTime.toISOString(), 
-      end: endTime.toISOString(),
-      duration: duration,
-      task: task,
-      Date: moment().format('YYYY-MM-DD')
+      Start: startTime.format('HH:mm:ss'), 
+      End: endTime.format('HH:mm:ss'),
+      Duration_minutes: duration,
+      Task: task,
+      Date: moment().format('YYYY-MM-DD'),
+      createdFromApp: true,                                             //manually added session
     };
 
-    const updatedSessions = [...sessions, newSession];                   // add new sessions to the list
-    setSessions(updatedSessions);                                        // update state with new session
-    setIsStudying(false);                                                // set user as not studying anymore
-    setTask('');                                                          // reset task input
-
     try {
-      const { error } = await supabase.from('sessions').insert([newSession]);
-      if (error) console.log('Error inserting sessions:', error);
-      else console.log('Session saved to supabase');
+      //insert new session into supabase
+      const { data, error } = await supabase.from('tracker').insert([newSession]);
+
+      if (error) {
+        console.log('Error inserting session:', error.message);
+        Alert.alert('Error', 'Failed to save session. Try again.');
+      } else {
+        console.log('Session saved to supabase:', data);
+        setIsStudying(false);                                           //set user as not studying anymore
+        setTask('');                                                    //reset task input
+      }
     } catch (error) {
-      console.log('Error saving session:', error);
+      console.log('Error saving session:', error.message);
+      Alert.alert("Error", "Failed to save session. Try again.");
     }
   };
 
@@ -157,16 +163,33 @@ const App = () => {
   };
 
    //function to delete a session
-   const deleteSession = async (index) => {
-    const updatedSessions = sessions.filter((_,i) => i !== index);
-    setSessions(updatedSessions);
+   const deleteSession = async (sessionId) => {
+    // find the session to delete by session id
+    const sessionToDelete = sessions.find(session => session.id === sessionId)
+
+    //prevent deletion if session was created from supabase
+    if (sessionToDelete.createdFromApp === false) {
+      Alert.alert("Action Denied", "You cannot delete sessions fetched from supabase.");
+      return;
+    }
 
     try {
-      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
-      if (error) console.log('Error deleting session:', error);
-      else console.log('Session deleted from supabase');
+      //delete session locally from app's state
+      const updatedSessions = sessions.filter(session => session.id !== sessionId);
+      setSessions(updatedSessions);                                                     //update app's state
+
+      //delete session from supabase
+      const { error } = await supabase.from('tracker').delete().eq('id',sessionToDelete.id);
+
+      if (error) {
+        console.log('Error deleting session:', error.message);
+        Alert.alert("Error", "Failed to delete sesion. Try again.");
+      } else {
+        console.log('Session deleted from Supabase');
+      }
     } catch (error) {
-      console.log('Error deleting session:', error);
+      console.log('Error deleting session:', error.message);
+      Alert.alert("Error", "Failed to delete session. Try again.");
     }
   };
 
@@ -183,8 +206,9 @@ const App = () => {
 
   //function to format the time to show AM/PM
   const formatStartTime = (start) => {
-    const startDate = moment(start);
-    return startDate.format('hh:mm A');
+    if (!start) return "N/A";
+    const startDate = moment(start, "HH:mm:ss");
+    return startDate.isValid() ? startDate.format('hh:mm A') : "Invalid Time";
   }
 
   //calculate rotation interpolation
