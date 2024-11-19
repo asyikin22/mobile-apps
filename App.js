@@ -1,6 +1,6 @@
 // imports and initial setup
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Button, FlatList, StyleSheet, TextInput, Alert, Animated } from 'react-native';
+import { View, Text, Button, FlatList, StyleSheet, TextInput, Alert, Animated, Dimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome'; 
 import { Calendar } from 'react-native-calendars';
 import { TouchableOpacity } from 'react-native';
@@ -8,10 +8,12 @@ import moment from 'moment';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY } from '@env';
 
-console.log("URL:", SUPABASE_URL);
-console.log("KEY:", SUPABASE_KEY);
+// console.log("URL:", SUPABASE_URL);
+// console.log("KEY:", SUPABASE_KEY);
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+const screenWidth = Dimensions.get('window').width;
 
 //state management
 const App = () => {
@@ -53,7 +55,7 @@ const App = () => {
       setSessions(sessionsData);
       console.log('Sessions loaded from supabase:', sessionsData.length);
     } catch (error) {
-      console.log('Error loading sessions:'. error)
+      console.log('Error loading sessions:', error)
     }
   };
 
@@ -67,7 +69,7 @@ const App = () => {
   //function to reset app 
   const resetAppData = async () => {
     try {
-      const { error } = await supabase.from('sessios').delete();
+      const { error } = await supabase.from('sessions').delete();
       if (error) {
         console.error('Error clearing supabase data:', error);
         return;
@@ -267,7 +269,8 @@ const App = () => {
           margin: 10,
           alignItems: 'center',
           flexDirection: 'row',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          height: 40,
 
         }}
       > 
@@ -299,6 +302,20 @@ const App = () => {
       
       {/*color code calendar based on intensity levels*/}
       <Calendar 
+        style={{
+          height: 320,
+          backgroundColor: 'transparent',
+          marginBottom: 5,
+          overflow: 'hidden',
+          width: screenWidth - 20,
+        }}
+        theme={{
+          textDayFontSize: 12,
+          monthTextColor: 'white',
+          textMonthFontSize:20,
+          textMonthFontWeight: 'bold',
+          textSectionTitleColor: 'yellow',
+        }}
         onDayPress={onDayPress}
         markedDates={Object.keys(studyByDate).reduce((acc, date) => {
           const minutesStudied = studyByDate[date];
@@ -317,12 +334,18 @@ const App = () => {
 
           acc[date] = {
             customStyles: {
-              container: { backgroundColor },
+              container: { 
+                backgroundColor,
+                padding: 0,
+                margin: 0,
+              },
+              text: {
+                color: hoursStudied > 0 ? 'white' : 'black',
+                fontWeight: 'bold',
+                margin: 0,
+                padding: 0,
+              }
             },
-            text: {
-              color: hoursStudied > 0 ? 'white' : 'black',
-              fontWeight: 'bold',
-            }
           };
           return acc;
         }, {})}
@@ -332,17 +355,22 @@ const App = () => {
       <FlatList 
         data={sessions.filter((session) => !selectedDate || session.Date === selectedDate)}
         keyExtractor={(_, index) => index.toString()}
+        contentContainerStyle={{
+          padding: 10,
+          width: '100%',
+          alignItems: 'center',
+        }}
         renderItem={({item, index}) => {
           const formattedStartTime = formatStartTime(item.start);
           const formattedEndTime = formatStartTime(item.end)
           return (
-            <View style={styles.sessionItem}> 
+            <View style={[styles.sessionItem, { width: '98%' }]}> 
             <Text>Task: {item.task || "No Task Available"}</Text>
             <Text>Duration: {item.duration} minutes</Text>
             <Text>Date: {item.Date}</Text>
             <Text>Start Time: {formattedStartTime}</Text>
             <Text>End Time: {formattedEndTime}</Text>
-            <TouchableOpacity onPress={() => deleteSession(index)}>
+            <TouchableOpacity onPress={() => deleteSession(item.id)}>
               <Icon name="trash" size={20} color="red" />
             </TouchableOpacity>
           </View>
@@ -357,77 +385,80 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1, 
-    padding: 20,
+    padding: 10,
     backgroundColor: '#001F3F',
   },
   input: {
     height: 40,
     borderColor: 'gray',
     borderWidth: 1,
-    marginBottom: 10,
     paddingHorizontal: 10,
     color: 'white'
   },
   totalDuration: {
     fontSize: 15,
     fontWeight: 'bold',
-    marginVertical: 10,
     color: 'yellow',
+    textAlign: 'center',
   },
   highlightedValue: {
     color: 'fuchsia', 
     fontWeight: 'bold',
   },
   header: {
-    fontSize: 24, 
+    fontSize: 30, 
+    paddingTop: 10,
     fontWeight: 'bold',
-    marginBottom: 20,
     color: 'white',
     textAlign: 'center'
   },
   sessionItem: {
-    marginVertical: 10,
-    padding: 10, 
-    backgroundColor: '#f0f0f0',
+    marginVertical: 5,
+    padding: 8, 
+    backgroundColor: '#fde2e4',
     borderRadius: 8,
+    width: 250,
   },
   deleteButton: {
     color: 'red',
     marginTop: 5,
   },
   legendContainer: {
-    marginVertical: 15,
+    marginVertical: 12,
     direction: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-around',
     padding: 5,
     backgroundColor: '#2C3E50',
     borderRadius: 8,
+    width: '90%',
+    alignSelf: 'center',
   }, 
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   colorBox: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     marginRight: 10,
     borderRadius: 4,
   },
   legendText: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'white',
   },
   resetBtn: {
     backgroundColor: 'red',
-    width: 50,
+    width: 40,
     padding: 3,
-    marginBottom: 10,
+    marginBottom: 5,
     borderRadius: 15,
   },
   resetBtnTxt: {
     textAlign: 'center',
     color: 'white',
+    fontSize: 12,
   }
 });
 
