@@ -13,6 +13,7 @@ import { SUPABASE_URL, SUPABASE_KEY } from '@env';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
+//get screen width
 const screenWidth = Dimensions.get('window').width;
 
 //state management
@@ -417,7 +418,6 @@ const styles = StyleSheet.create({
     padding: 8, 
     backgroundColor: '#fde2e4',
     borderRadius: 8,
-    width: 250,
   },
   deleteButton: {
     color: 'red',
